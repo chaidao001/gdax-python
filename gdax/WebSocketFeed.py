@@ -61,7 +61,11 @@ class GdaxWebSocketFeed:
         try:
             received_message = self._ws.recv()
             self._process_message(json.loads(received_message))
-        except:
+        except Exception as e:
+            print(e)
+            self._unsubscribe()
+        except KeyboardInterrupt:
+            print("Interrupted")
             self._unsubscribe()
 
     def start(self):
