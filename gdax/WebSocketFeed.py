@@ -4,12 +4,16 @@ import json
 import websocket
 
 
-class GdaxWebSocketFeed():
+class GdaxWebSocketFeed:
     def __init__(self, url='wss://ws-feed.gdax.com', product_ids=None, channels=None):
         if channels is None:
-            self._channels = ['heartbeat', 'level2']
+            self._channels = [
+                'level2'
+            ]
         if product_ids is None:
-            self._product_ids = ['BTC-USD']
+            self._product_ids = [
+                'BTC-USD'
+            ]
 
         self._url = url
         self._ws = None
@@ -47,14 +51,11 @@ class GdaxWebSocketFeed():
                 print("Unsubscribed")
                 self._running = False
         elif type == 'snapshot':
-            self._price_ladders = self.PriceLadders(message)
-            pass
+            self._price_ladders = PriceLadders(message)
         elif type == 'l2update':
-            pass
-        elif type == 'heartbeat':
-            pass
+            self._price_ladders.update(message['changes'])
         else:
-            print(type)
+            print(message)
 
     def _listen(self):
         try:
@@ -72,27 +73,65 @@ class GdaxWebSocketFeed():
         while self._running:
             self._listen()
 
-    class PriceLadders:
-        def __init__(self, snapshot: dict, level=10):
-            self._level = level
-            self._price_ladders = {
-                'bids': self._price_size_lists_to_tuples(snapshot['bids'][:self._level]),
-                'asks': self._price_size_lists_to_tuples(snapshot['asks'][:self._level])
-            }
 
-            heapq._heapify_max(self._price_ladders['bids'])
-            heapq.heapify(self._price_ladders['asks'])
+class PriceLadders:
+    def __init__(self, snapshot: dict, level=10):
+        self._level = level
+        self._price_ladders = {
+            'buy': PriceLadder('buy', snapshot['bids'][:self._level]),
+            'sell': PriceLadder('sell', snapshot['asks'][:self._level])
+        }
 
-        def _price_size_lists_to_tuples(self, price_size_list):
-            return [(float(price), float(size)) for price, size in price_size_list]
+    def update(self, changes: list):
+        for change in changes:
+            side, price, size = change
 
-    class PriceVol:
-        def __init__(self, price_vol: list):
-            self._price = price_vol[0]
-            self._size = price_vol[1]
+            self._price_ladders[side].update(float(price), float(size))
+
+
+class PriceLadder:
+    def __init__(self, side: str, price_sizes: list):
+        self._side = side
+        self._prices = [float(price) for price, _ in price_sizes]
+        self._price_sizes = {float(price): float(size) for price, size in price_sizes}
+
+        if self._side == 'buy':
+            # used to find the min price
+            heapq.heapify(self._prices)
+        elif self._side == 'sell':
+            # used to find the max price
+            heapq._heapify_max(self._prices)
+        else:
+            raise Exception("Unknown side {}" % self._side)
+
+    def update(self, price: float, size: float):
+        if size == 0:
+            # matched.  remove from ladder
+            if price not in self._price_sizes:
+                return
+
+            self._prices.remove(price)
+            del self._price_sizes[price]
+        elif price in self._price_sizes:
+            # update on existing prices
+            self._price_sizes[price] = size
+        else:
+            # new price
+            removed_price = None
+            if self._side == 'buy':
+                # keep the largest prices and pop the smallest
+                if price > self._prices[0]:
+                    removed_price = heapq.heapreplace(self._prices, price)
+            else:
+                # keep the smallest prices and pop the largest
+                if price < self._prices[0]:
+                    removed_price = heapq._heapreplace_max(self._prices, price)
+
+            if removed_price:
+                del self._price_sizes[removed_price]
+                self._price_sizes[price] = size
 
 
 if __name__ == "__main__":
     gdax = GdaxWebSocketFeed()
-
     gdax.start()
