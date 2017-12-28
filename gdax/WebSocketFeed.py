@@ -5,30 +5,32 @@ import websocket
 
 
 class GdaxWebSocketFeed():
-    def __init__(self, url='wss://ws-feed.gdax.com'):
+    def __init__(self, url='wss://ws-feed.gdax.com', product_ids=None, channels=None):
+        if channels is None:
+            self._channels = ['heartbeat', 'level2']
+        if product_ids is None:
+            self._product_ids = ['BTC-USD']
+
         self._url = url
         self._ws = None
         self._price_ladders = None
+        self._running = True
 
     def _subscribe(self):
-        self._ws = websocket.create_connection(self._url)
-
         message = {
             "type": "subscribe",
-            "product_ids": [
-                # "BTC-USD",
-                "BTC-EUR"
-            ],
-            "channels": [
-                "heartbeat",
-                "level2"
-            ]
+            "product_ids": self._product_ids,
+            "channels": self._channels
         }
-
         self._ws.send(json.dumps(message))
 
     def _unsubscribe(self):
-        pass
+        message = {
+            "type": "unsubscribe",
+            "product_ids": self._product_ids,
+            "channels": self._channels
+        }
+        self._ws.send(json.dumps(message))
 
     def _authenticate(self):
         pass
@@ -37,7 +39,13 @@ class GdaxWebSocketFeed():
         type = message['type']
 
         if type == 'subscriptions':
-            print("Subscribed")
+            channels = message['channels']
+
+            if channels:
+                print("Subscribed")
+            else:
+                print("Unsubscribed")
+                self._running = False
         elif type == 'snapshot':
             self._price_ladders = self.PriceLadders(message)
             pass
@@ -53,13 +61,15 @@ class GdaxWebSocketFeed():
             received_message = self._ws.recv()
             self._process_message(json.loads(received_message))
         except:
-            pass
+            self._unsubscribe()
 
     def start(self):
+        self._ws = websocket.create_connection(self._url)
+
         self._subscribe()
         self._authenticate()
-        self._unsubscribe()
-        while True:
+
+        while self._running:
             self._listen()
 
     class PriceLadders:
