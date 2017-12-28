@@ -1,4 +1,3 @@
-import heapq
 import json
 
 import websocket
@@ -78,31 +77,19 @@ class GdaxWebSocketFeed:
 class PriceLadders:
     def __init__(self, snapshot: dict):
         self._price_ladders = {
-            'buy': PriceLadder('buy', snapshot['bids']),
-            'sell': PriceLadder('sell', snapshot['asks'])
+            'buy': PriceLadder(snapshot['bids']),
+            'sell': PriceLadder(snapshot['asks'])
         }
 
     def update(self, changes: list):
         for change in changes:
             side, price, size = change
-
             self._price_ladders[side].update(float(price), float(size))
 
 
 class PriceLadder:
-    def __init__(self, side: str, price_sizes: list):
-        self._side = side
-        self._prices = [float(price) for price, _ in price_sizes]
+    def __init__(self, price_sizes: list):
         self._price_sizes = {float(price): float(size) for price, size in price_sizes}
-
-        if self._side == 'buy':
-            # used to find the min price
-            heapq.heapify(self._prices)
-        elif self._side == 'sell':
-            # used to find the max price
-            heapq._heapify_max(self._prices)
-        else:
-            raise Exception("Unknown side {}" % self._side)
 
     def update(self, price: float, size: float):
         if size == 0:
