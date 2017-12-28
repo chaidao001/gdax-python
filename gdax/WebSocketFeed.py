@@ -61,9 +61,6 @@ class GdaxWebSocketFeed:
         try:
             received_message = self._ws.recv()
             self._process_message(json.loads(received_message))
-        except Exception as e:
-            print(e)
-            self._unsubscribe()
         except KeyboardInterrupt:
             print("Interrupted")
             self._unsubscribe()
@@ -79,11 +76,10 @@ class GdaxWebSocketFeed:
 
 
 class PriceLadders:
-    def __init__(self, snapshot: dict, level=10):
-        self._level = level
+    def __init__(self, snapshot: dict):
         self._price_ladders = {
-            'buy': PriceLadder('buy', snapshot['bids'][:self._level]),
-            'sell': PriceLadder('sell', snapshot['asks'][:self._level])
+            'buy': PriceLadder('buy', snapshot['bids']),
+            'sell': PriceLadder('sell', snapshot['asks'])
         }
 
     def update(self, changes: list):
@@ -110,31 +106,10 @@ class PriceLadder:
 
     def update(self, price: float, size: float):
         if size == 0:
-            # matched.  remove from ladder
-            if price not in self._price_sizes:
-                return
-
-            self._prices.remove(price)
+            # price fully matched.  remove from ladder
             del self._price_sizes[price]
-        elif price in self._price_sizes:
-            # update on existing prices
-            self._price_sizes[price] = size
         else:
-            # new price
-            removed_price = None
-            if self._side == 'buy':
-                # keep the largest prices and pop the smallest
-                if price > self._prices[0]:
-                    removed_price = heapq.heapreplace(self._prices, price)
-            else:
-                # keep the smallest prices and pop the largest
-                if price < self._prices[0]:
-                    removed_price = heapq._heapreplace_max(self._prices, price)
-
-            if removed_price:
-                del self._price_sizes[removed_price]
-                self._price_sizes[price] = size
-
+            self._price_sizes[price] = size
 
 if __name__ == "__main__":
     gdax = GdaxWebSocketFeed()
